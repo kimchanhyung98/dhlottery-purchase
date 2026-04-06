@@ -3,7 +3,7 @@ description: '동행복권 로또 6/45 자동 구매를 위한 GitHub Action. �
 branding:
   icon: 'award'
   color: 'green'
-author: 'kkd927<kkd927@gmail.com>'
+author: 'kkd927 <kkd927@gmail.com>'
 inputs:
   dhlottery-id:
     required: true
