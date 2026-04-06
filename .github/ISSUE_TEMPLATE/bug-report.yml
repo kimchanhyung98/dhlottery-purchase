@@ -1,0 +1,73 @@
+name: 버그 제보
+description: 재현 가능한 문제를 제보합니다
+title: '[버그] '
+labels:
+  - bug
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: 요약
+      description: 어떤 문제가 발생했는지, 기대한 동작은 무엇인지 작성해 주세요.
+      placeholder: 문제 내용을 간단하고 명확하게 작성해 주세요.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 재현 단계
+      description: 재현 가능한 정확한 절차를 적어 주세요.
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: workflow
+    attributes:
+      label: 사용한 workflow 파일
+      description: 어떤 workflow를 실행했나요?
+      placeholder: .github/workflows/lotto-purchase.yml
+    validations:
+      required: true
+  - type: input
+    id: custom_workflow
+    attributes:
+      label: 사용한 custom workflow 파일 (선택)
+      description: workflow-file 값을 바꿨다면 적어 주세요.
+      placeholder: custom-workflows/01-auto-basic.js
+  - type: textarea
+    id: expected
+    attributes:
+      label: 기대한 동작
+      placeholder: 어떤 결과를 기대했는지 적어 주세요.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 실제 동작
+      placeholder: 실제로 어떤 일이 발생했는지 적어 주세요.
+    validations:
+      required: true
+  - type: input
+    id: node
+    attributes:
+      label: Node/npm 버전 (선택)
+      placeholder: node v22, npm 11
+  - type: textarea
+    id: logs
+    attributes:
+      label: 로그 및 스크린샷
+      description: 관련 로그를 붙여 주세요. 업로드 전 시크릿 정보는 반드시 제거해 주세요.
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 확인 사항
+      options:
+        - label: 기존 이슈를 확인했습니다.
+          required: true
+        - label: 로그에서 시크릿 정보를 제거했습니다.
+          required: true

@@ -1,0 +1,35 @@
+name: 로또 구매 (수동 + 스케줄)
+on:
+  schedule:
+    # 매주 일요일 UTC 03:00 (한국 시간 일요일 12:00)
+    # https://elmah.io/tools/cron-parser/
+    - cron: '0 3 * * 0'
+  workflow_dispatch: # Allow manual trigger
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  purchase:
+    runs-on: ubuntu-latest
+    container: mcr.microsoft.com/playwright:v1.55.1-jammy
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Custom purchase workflow
+        uses: ./
+        with:
+          dhlottery-id: ${{ secrets.DHLOTTERY_ID }}
+          dhlottery-password: ${{ secrets.DHLOTTERY_PASSWORD }}
+          github-token: ${{ github.token }}
+          telegram-bot-token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          telegram-chat-id: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # 아래 예제 중 하나만 활성화해서 사용하세요.
+          workflow-file: custom-workflows/01-auto-basic.js
+          # workflow-file: custom-workflows/02-manual-fixed-numbers.js
+          # workflow-file: custom-workflows/03-auto-plus-manual.js

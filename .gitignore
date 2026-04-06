@@ -1,0 +1,32 @@
+# IDE / Editor
+/.idea/
+/.vscode/
+*.swp
+*.swo
+
+# Dependencies
+/node_modules/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Tool caches / reports
+*.tsbuildinfo
+.eslintcache
+/coverage/
+/.nyc_output/
+/playwright-report/
+/test-results/
+*.tgz
