@@ -15,7 +15,7 @@ inputs:
     default: ''
   github-token:
     required: false
-    description: 'GitHub 이슈 관리를 위한 토큰. workflow에서는 `${{ github.token }}` 사용을 권장합니다.'
+    description: 'GitHub 이슈 관리를 위한 토큰. workflow에서는 github.token 컨텍스트나 GITHUB_TOKEN 전달을 권장합니다.'
     default: ''
   game-count:
     required: false
