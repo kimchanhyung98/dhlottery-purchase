@@ -150,7 +150,7 @@ function rankToLabel(rank: number): string {
 }
 
 // Helper: Parse issue body — extracts round from heading and numbers from table rows.
-// Throws on any unparseable row — partial ranks would close the issue via `every(r => r === 0)` vacuous truth.
+// Throws on any unparseable row or body; callers handle the error and skip updating/closing the issue.
 function parseIssueBody(body: string): { round: number; numbers: number[][] } {
   const roundMatch = body.match(/##\s*제(\d+)회/);
   const round = roundMatch?.[1] ? Number(roundMatch[1]) : 0;
