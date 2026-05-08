@@ -49,7 +49,7 @@ export async function createPurchaseIssue(numbers: number[][]): Promise<void> {
 }
 
 // Get all waiting issues (open issues with the waiting label)
-export async function getWaitingIssues() {
+async function getWaitingIssues() {
   const octokit = getOctokit();
   const repo = getRepo();
 
@@ -88,7 +88,7 @@ export async function checkWinningIssues(): Promise<void> {
       }
 
       const winningNumbers = await fetchWinningNumbers(round);
-      const ranks = numbers.map(nums => checkWinning(nums, winningNumbers).rank);
+      const ranks = numbers.map(nums => checkWinning(nums, winningNumbers));
 
       await updateIssueWithResults(issue.number, ranks);
 

@@ -55536,30 +55536,22 @@ function fetchWinningNumbers(round) {
         }
     });
 }
-// Check if a set of numbers wins
+// Check the winning rank of a set of numbers (0 = no prize)
 function checkWinning(myNumbers, winningNumbers) {
     const mainWinningNumbers = winningNumbers.slice(0, 6);
     const bonusNumber = winningNumbers[6];
-    const matchedNumbers = myNumbers.filter(n => mainWinningNumbers.includes(n));
-    const matchingCount = matchedNumbers.length;
-    let rank = 0;
-    if (matchingCount === 6) {
-        rank = 1; // 1st prize
-    }
-    else if (matchingCount === 5 && myNumbers.includes(bonusNumber)) {
-        matchedNumbers.push(bonusNumber);
-        rank = 2; // 2nd prize
-    }
-    else if (matchingCount === 5) {
-        rank = 3; // 3rd prize
-    }
-    else if (matchingCount === 4) {
-        rank = 4; // 4th prize
-    }
-    else if (matchingCount === 3) {
-        rank = 5; // 5th prize
-    }
-    return { rank, matchedNumbers };
+    const matchingCount = myNumbers.filter(n => mainWinningNumbers.includes(n)).length;
+    if (matchingCount === 6)
+        return 1;
+    if (matchingCount === 5 && bonusNumber !== undefined && myNumbers.includes(bonusNumber))
+        return 2;
+    if (matchingCount === 5)
+        return 3;
+    if (matchingCount === 4)
+        return 4;
+    if (matchingCount === 3)
+        return 5;
+    return 0;
 }
 // Generate QR check winning link
 function getCheckWinningLink(numbers, round) {
@@ -55646,7 +55638,7 @@ function checkWinningIssues() {
                     continue;
                 }
                 const winningNumbers = yield fetchWinningNumbers(round);
-                const ranks = numbers.map(nums => checkWinning(nums, winningNumbers).rank);
+                const ranks = numbers.map(nums => checkWinning(nums, winningNumbers));
                 yield updateIssueWithResults(issue.number, ranks);
                 console.log(`[Issues] Issue #${issue.number} updated with ranks:`, ranks);
             }
