@@ -217,6 +217,11 @@ function isConsolidatedFormat(body: string): boolean {
   return body.includes('## Purchase');
 }
 
+// Helper: Extract value after the first ":" — preserves colons inside the value (e.g. URLs)
+function getFieldValue(line: string): string {
+  return line.split(':').slice(1).join(':').trim();
+}
+
 // Helper: Parse consolidated issue body (new format)
 function parseConsolidatedIssueBody(body: string): {
   workflowRun: string;
@@ -229,11 +234,10 @@ function parseConsolidatedIssueBody(body: string): {
   }>;
 } {
   const lines = body.split('\n');
-  const getValue = (line: string) => line.split(':').slice(1).join(':').trim();
 
   // Parse header
-  const workflowRun = getValue(lines[0] || '');
-  const round = Number(getValue(lines[1] || ''));
+  const workflowRun = getFieldValue(lines[0] || '');
+  const round = Number(getFieldValue(lines[1] || ''));
 
   // Parse purchases
   const purchases: Array<{
@@ -258,7 +262,7 @@ function parseConsolidatedIssueBody(body: string): {
       currentPurchase = {};
     } else if (currentPurchase && line.includes(':')) {
       const key = line.split(':')[0]?.trim();
-      const value = getValue(line);
+      const value = getFieldValue(line);
 
       if (key === 'timestamp') {
         currentPurchase.timestamp = value;
@@ -280,16 +284,15 @@ function parseConsolidatedIssueBody(body: string): {
   return { workflowRun, round, purchases };
 }
 
-// Helper: Parse issue body (legacy format)
+// Helper: Parse issue body (legacy format — kept only to read pre-existing issues)
 function parseIssueBody(body: string): { date: string; round: number; numbers: number[][]; link: string } {
   const lines = body.split('\n');
-  const getValue = (line: string) => line.split(':')[1]?.trim() ?? '';
 
   return {
-    date: getValue(lines[0] || ''),
-    round: Number(getValue(lines[1] || '')),
-    numbers: JSON.parse(getValue(lines[2] || '[]')),
-    link: getValue(lines[3] || '')
+    date: getFieldValue(lines[0] || ''),
+    round: Number(getFieldValue(lines[1] || '')),
+    numbers: JSON.parse(getFieldValue(lines[2] || '') || '[]'),
+    link: getFieldValue(lines[3] || '')
   };
 }
 

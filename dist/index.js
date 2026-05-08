@@ -55733,14 +55733,17 @@ function rankToLabel(rank) {
 function isConsolidatedFormat(body) {
     return body.includes('## Purchase');
 }
+// Helper: Extract value after the first ":" — preserves colons inside the value (e.g. URLs)
+function getFieldValue(line) {
+    return line.split(':').slice(1).join(':').trim();
+}
 // Helper: Parse consolidated issue body (new format)
 function parseConsolidatedIssueBody(body) {
     var _a;
     const lines = body.split('\n');
-    const getValue = (line) => line.split(':').slice(1).join(':').trim();
     // Parse header
-    const workflowRun = getValue(lines[0] || '');
-    const round = Number(getValue(lines[1] || ''));
+    const workflowRun = getFieldValue(lines[0] || '');
+    const round = Number(getFieldValue(lines[1] || ''));
     // Parse purchases
     const purchases = [];
     let currentPurchase = null;
@@ -55758,7 +55761,7 @@ function parseConsolidatedIssueBody(body) {
         }
         else if (currentPurchase && line.includes(':')) {
             const key = (_a = line.split(':')[0]) === null || _a === void 0 ? void 0 : _a.trim();
-            const value = getValue(line);
+            const value = getFieldValue(line);
             if (key === 'timestamp') {
                 currentPurchase.timestamp = value;
             }
@@ -55779,15 +55782,14 @@ function parseConsolidatedIssueBody(body) {
     }
     return { workflowRun, round, purchases };
 }
-// Helper: Parse issue body (legacy format)
+// Helper: Parse issue body (legacy format — kept only to read pre-existing issues)
 function parseIssueBody(body) {
     const lines = body.split('\n');
-    const getValue = (line) => { var _a, _b; return (_b = (_a = line.split(':')[1]) === null || _a === void 0 ? void 0 : _a.trim()) !== null && _b !== void 0 ? _b : ''; };
     return {
-        date: getValue(lines[0] || ''),
-        round: Number(getValue(lines[1] || '')),
-        numbers: JSON.parse(getValue(lines[2] || '[]')),
-        link: getValue(lines[3] || '')
+        date: getFieldValue(lines[0] || ''),
+        round: Number(getFieldValue(lines[1] || '')),
+        numbers: JSON.parse(getFieldValue(lines[2] || '') || '[]'),
+        link: getFieldValue(lines[3] || '')
     };
 }
 // Helper: Build consolidated issue body with multiple purchases

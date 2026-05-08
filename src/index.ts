@@ -1,13 +1,7 @@
 import * as core from '@actions/core';
 import { BrowserSession } from './core/browser';
 import { purchaseAuto } from './core/purchase';
-import { initLabels, createConsolidatedIssue, checkWinningIssues } from './github/issues';
-
-interface PurchaseMetadata {
-  type: 'auto';
-  numbers: number[][];
-  timestamp: string;
-}
+import { initLabels, createConsolidatedIssue, checkWinningIssues, type PurchaseMetadata } from './github/issues';
 
 async function run() {
   const session = new BrowserSession();
