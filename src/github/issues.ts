@@ -30,27 +30,6 @@ export async function initLabels(): Promise<void> {
   );
 }
 
-// Create a GitHub Issue for a purchase
-export async function createPurchaseIssue(numbers: number[][]): Promise<void> {
-  const octokit = getOctokit();
-  const repo = getRepo();
-
-  const date = new Date().toISOString().split('T')[0] || new Date().toISOString().slice(0, 10);
-  const round = getNextLottoRound();
-  const link = getCheckWinningLink(numbers, round);
-
-  const body = buildIssueBody({ date, round, numbers, link });
-
-  await octokit.rest.issues.create({
-    ...repo,
-    title: date,
-    body,
-    labels: [LABELS.waiting]
-  });
-
-  console.log(`Created issue for ${numbers.length} games on ${date}`);
-}
-
 // Purchase metadata interface
 export interface PurchaseMetadata {
   type: 'auto' | 'manual';
@@ -312,16 +291,6 @@ function parseIssueBody(body: string): { date: string; round: number; numbers: n
     numbers: JSON.parse(getValue(lines[2] || '[]')),
     link: getValue(lines[3] || '')
   };
-}
-
-// Helper: Build issue body
-function buildIssueBody(data: { date: string; round: number; numbers: number[][]; link: string }): string {
-  return (
-    `date: ${data.date}\n` +
-    `round: ${data.round}\n` +
-    `numbers: ${JSON.stringify(data.numbers)}\n` +
-    `link: ${data.link}`
-  );
 }
 
 // Helper: Build consolidated issue body with multiple purchases

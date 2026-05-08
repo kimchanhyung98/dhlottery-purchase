@@ -32,31 +32,12 @@ var require$$1$7 = require('node:dns');
 var require$$5$3 = require('string_decoder');
 var require$$2$3 = require('child_process');
 var require$$6 = require('timers');
-var require$$0$9 = require('url');
 var playwright = require('playwright');
 var stream$2 = require('stream');
+var require$$0$9 = require('url');
 var http2$1 = require('http2');
 var require$$1$9 = require('tty');
 var zlib = require('zlib');
-
-function _interopNamespaceDefault(e) {
-    var n = Object.create(null);
-    if (e) {
-        Object.keys(e).forEach(function (k) {
-            if (k !== 'default') {
-                var d = Object.getOwnPropertyDescriptor(e, k);
-                Object.defineProperty(n, k, d.get ? d : {
-                    enumerable: true,
-                    get: function () { return e[k]; }
-                });
-            }
-        });
-    }
-    n.default = e;
-    return Object.freeze(n);
-}
-
-var require$$1__namespace = /*#__PURE__*/_interopNamespaceDefault(require$$1$8);
 
 /******************************************************************************
 Copyright (c) Microsoft Corporation.
@@ -30693,16 +30674,12 @@ const SELECTORS = {
     LOGIN_ERROR_POPUP: '.msgPop[role="alertdialog"]',
     // Purchase page
     ENVIRONMENT_ALERT_CONFIRM: 'input[value="확인"][onclick="javascript:closepopupLayerAlert();"]',
-    PURCHASE_TYPE_MIXED_BTN: 'a[href="#divWay2Buy1"]#num1',
     PURCHASE_TYPE_RANDOM_BTN: 'a[href="#divWay2Buy1"]#num2',
     PURCHASE_AMOUNT_SELECT: 'select#amoundApply',
     PURCHASE_AMOUNT_CONFIRM_BTN: 'input[value="확인"]#btnSelectNum',
     PURCHASE_BTN: 'button#btnBuy',
     PURCHASE_CONFIRM_BTN: 'input[value="확인"][onclick="javascript:closepopupLayerConfirm(true);"]',
-    PURCHASE_NUMBER_LIST: '#reportRow .nums',
-    // Manual number selection
-    NUMBER_CHECKBOX: (num) => `label[for="check645num${num}"]`,
-    NUMBER_RESET_BTN: 'input#resetAllNum'
+    PURCHASE_NUMBER_LIST: '#reportRow .nums'
 };
 // Constants
 const BROWSER_LOGIN_WAIT = 5000;
@@ -31015,29 +30992,25 @@ function getPurchaseDiagnostics(page) {
         return [`URL: ${page.url()}`, `title: ${title}`, `bodySnippet: ${bodySnippet || 'none'}`].join(', ');
     });
 }
-function openPurchasePage(session, mode) {
+function openPurchasePage(session) {
     return __awaiter$3(this, void 0, void 0, function* () {
         const page = session.getPage();
-        const readySelector = mode === 'manual' ? SELECTORS.NUMBER_CHECKBOX(1) : SELECTORS.PURCHASE_TYPE_RANDOM_BTN;
+        const readySelector = SELECTORS.PURCHASE_TYPE_RANDOM_BTN;
         console.log('[Purchase] Navigating to lotto game page');
         yield session.navigate(URLS.LOTTO_645);
         for (let attempt = 1; attempt <= 2; attempt++) {
             yield page.waitForLoadState('domcontentloaded').catch(() => undefined);
             yield dismissEnvironmentAlert(page);
-            if (mode === 'manual') {
-                console.log('[Purchase] Switching to mixed selection tab');
-                yield page.click(SELECTORS.PURCHASE_TYPE_MIXED_BTN).catch(() => undefined);
-            }
             const isReady = yield waitForVisible(page, readySelector, PURCHASE_PAGE_READY_TIMEOUT);
             if (isReady) {
                 return page;
             }
             if (attempt < 2) {
-                console.warn(`[Purchase] Purchase page not ready for ${mode} mode, retrying once`);
+                console.warn('[Purchase] Purchase page not ready for auto mode, retrying once');
                 yield page.reload({ waitUntil: 'load', timeout: GOTO_TIMEOUT });
             }
         }
-        throw new Error(`Failed to load purchase page for ${mode} mode (${yield getPurchaseDiagnostics(page)})`);
+        throw new Error(`Failed to load purchase page for auto mode (${yield getPurchaseDiagnostics(page)})`);
     });
 }
 function waitForPurchaseResults(page) {
@@ -31058,7 +31031,7 @@ function purchaseAuto(session, amount) {
         amount = Math.max(1, Math.min(5, amount));
         // Validate purchase time
         validatePurchaseAvailability();
-        const page = yield openPurchasePage(session, 'auto');
+        const page = yield openPurchasePage(session);
         // Click auto purchase button
         console.log('[Purchase] Clicking auto purchase button');
         yield page.click(SELECTORS.PURCHASE_TYPE_RANDOM_BTN);
@@ -31083,93 +31056,6 @@ function purchaseAuto(session, amount) {
         console.log('[Purchase] Auto purchase completed:', result);
         return result;
     });
-}
-// Manual purchase function
-function purchaseManual(session, numbers) {
-    return __awaiter$3(this, void 0, void 0, function* () {
-        if (!session.isAuthenticated()) {
-            throw new Error('Not authenticated. Login first');
-        }
-        // Validate input
-        if (numbers.length === 0 || numbers.length > 5) {
-            throw new Error('1~5개의 게임만 구매 가능합니다');
-        }
-        numbers.forEach((nums, idx) => {
-            if (nums.length !== 6) {
-                throw new Error(`게임 ${idx + 1}: 6개의 번호를 선택해야 합니다`);
-            }
-            nums.forEach(num => {
-                if (num < 1 || num > 45 || !Number.isInteger(num)) {
-                    throw new Error(`게임 ${idx + 1}: 1~45 사이의 정수만 가능합니다`);
-                }
-            });
-            if (new Set(nums).size !== 6) {
-                throw new Error(`게임 ${idx + 1}: 중복된 번호가 있습니다`);
-            }
-        });
-        // Validate purchase time
-        validatePurchaseAvailability();
-        const page = yield openPurchasePage(session, 'manual');
-        // Select numbers for each game
-        for (let gameIdx = 0; gameIdx < numbers.length; gameIdx++) {
-            const gameNumbers = numbers[gameIdx];
-            console.log(`[Purchase] Selecting numbers for game ${gameIdx + 1}:`, gameNumbers);
-            // Click each number
-            for (const num of gameNumbers) {
-                yield page
-                    .locator(SELECTORS.NUMBER_CHECKBOX(num))
-                    .scrollIntoViewIfNeeded()
-                    .catch(() => undefined);
-                yield page.click(SELECTORS.NUMBER_CHECKBOX(num));
-                yield page.waitForTimeout(1000); // Wait between clicks
-            }
-            // Set amount to 1
-            yield page.selectOption(SELECTORS.PURCHASE_AMOUNT_SELECT, '1');
-            // Confirm selection
-            yield page.click(SELECTORS.PURCHASE_AMOUNT_CONFIRM_BTN);
-            yield page.waitForTimeout(500);
-            const slotLabels = ['A', 'B', 'C', 'D', 'E'];
-            console.log(`[Purchase] Game ${gameIdx + 1} added to slot ${slotLabels[gameIdx]}`);
-        }
-        // Purchase
-        console.log('[Purchase] Clicking purchase button');
-        yield page.click(SELECTORS.PURCHASE_BTN);
-        yield page.click(SELECTORS.PURCHASE_CONFIRM_BTN);
-        // Wait for results
-        console.log('[Purchase] Waiting for purchase results');
-        yield waitForPurchaseResults(page);
-        // Parse results
-        const result = yield page.$$eval(SELECTORS.PURCHASE_NUMBER_LIST, elems => {
-            return elems.map(it => Array.from(it.children).map(child => Number(child.innerHTML)));
-        });
-        if (result.length === 0 || result.some(nums => nums.length === 0 || nums.some(n => Number.isNaN(n)))) {
-            throw new Error('Failed to parse purchase results');
-        }
-        console.log('[Purchase] Manual purchase completed:', result);
-        return result;
-    });
-}
-
-// Generate random lotto numbers
-// Generate random numbers excluding specific number sets
-function generateExcluding(exclude, count) {
-    const result = [];
-    // Flatten all excluded numbers
-    const excludedNumbers = new Set(exclude.flat());
-    for (let i = 0; i < count; i++) {
-        // Generate available numbers (1-45 minus excluded)
-        const available = Array.from({ length: 45 }, (_, idx) => idx + 1).filter(num => !excludedNumbers.has(num));
-        if (available.length < 6) {
-            throw new Error('Not enough numbers available after exclusion');
-        }
-        // Pick 6 random numbers from available
-        const numbers = available
-            .sort(() => Math.random() - 0.5)
-            .slice(0, 6)
-            .sort((a, b) => a - b);
-        result.push(numbers);
-    }
-    return result;
 }
 
 var github = {};
@@ -55919,103 +55805,6 @@ function buildConsolidatedIssueBody(purchases, round, workflowRun) {
     return header + sections.join('\n');
 }
 
-const TELEGRAM_API_BASE = 'https://api.telegram.org/bot';
-function getConfig() {
-    const token = coreExports.getInput('telegram-bot-token');
-    const chatId = coreExports.getInput('telegram-chat-id');
-    return { token, chatId };
-}
-function isEnabled() {
-    const { token, chatId } = getConfig();
-    return Boolean(token && chatId);
-}
-function sendMessage(text) {
-    return __awaiter$3(this, void 0, void 0, function* () {
-        const { token, chatId } = getConfig();
-        if (!token || !chatId) {
-            return;
-        }
-        try {
-            yield axios$1.post(`${TELEGRAM_API_BASE}${token}/sendMessage`, {
-                chat_id: chatId,
-                text,
-                parse_mode: 'Markdown'
-            });
-        }
-        catch (error) {
-            if (axios$1.isAxiosError(error)) {
-                console.error(`[Telegram] Failed to send message: ${error.message}`);
-            }
-            else if (error instanceof Error) {
-                console.error(`[Telegram] Failed to send message: ${error.message}`);
-            }
-            else {
-                console.error('[Telegram] Failed to send message:', error);
-            }
-        }
-    });
-}
-
-// Send purchase notification to Telegram
-function notifyPurchase(purchases) {
-    return __awaiter$3(this, void 0, void 0, function* () {
-        if (!isEnabled())
-            return;
-        const round = getNextLottoRound();
-        const totalGames = purchases.reduce((sum, p) => sum + p.numbers.length, 0);
-        const sections = purchases.map((purchase, index) => {
-            const typeLabel = purchase.type === 'auto' ? '자동' : '수동';
-            const link = getCheckWinningLink(purchase.numbers, round);
-            const numbersText = purchase.numbers.map((nums, i) => `  ${i + 1}. \`${nums.join(', ')}\``).join('\n');
-            return `*#${index + 1} (${typeLabel})*\n${numbersText}\n[당첨확인](${link})`;
-        });
-        const message = `🎰 *제${round}회 로또 구매 완료*\n` + `총 ${totalGames}게임\n\n` + sections.join('\n\n');
-        console.log('[Telegram] Sending purchase notification');
-        yield sendMessage(message);
-    });
-}
-// Send winning notification to Telegram (only when there are winners)
-function notifyWinning(issueNumber, round, ranks) {
-    return __awaiter$3(this, void 0, void 0, function* () {
-        if (!isEnabled())
-            return;
-        const winningGames = ranks.map((rank, index) => ({ rank, game: index + 1 })).filter(r => r.rank > 0);
-        if (winningGames.length === 0)
-            return;
-        const rankEmojis = ['', '🥇', '🥈', '🥉', '4️⃣', '5️⃣'];
-        const results = winningGames.map(g => `  ${rankEmojis[g.rank]} ${g.game}번 게임: ${g.rank}등 당첨!`).join('\n');
-        const message = `🎉 *제${round}회 당첨!*\n\n` + `${results}\n\n` + `Issue #${issueNumber}`;
-        console.log('[Telegram] Sending winning notification');
-        yield sendMessage(message);
-    });
-}
-
-function loadWorkflow(workflowFile) {
-    return __awaiter$3(this, void 0, void 0, function* () {
-        const resolvedPath = require$$1__namespace.resolve(process.cwd(), workflowFile);
-        try {
-            const workflowModule = yield import(require$$0$9.pathToFileURL(resolvedPath).href);
-            const workflow = workflowModule.default;
-            if (typeof workflow !== 'function') {
-                throw new Error(`[Main] Invalid custom workflow export in "${workflowFile}". ` +
-                    `Expected default export function.\n` +
-                    `- ESM (.js/.mjs): export default async (api) => {}\n` +
-                    `- CJS (.cjs): module.exports = async (api) => {}`);
-            }
-            return workflow;
-        }
-        catch (error) {
-            if (error instanceof Error && error.message.includes('module is not defined in ES module scope')) {
-                throw new Error(`[Main] Invalid custom workflow module format in "${workflowFile}".\n` +
-                    `Detected CommonJS syntax (module.exports) in a .js file under an ESM package.\n` +
-                    `Choose one of the following:\n` +
-                    `1) Keep .js and switch to ESM: export default async (api) => {}\n` +
-                    `2) Keep CommonJS and rename file to .cjs: module.exports = async (api) => {}`);
-            }
-            throw error;
-        }
-    });
-}
 function run() {
     return __awaiter$3(this, void 0, void 0, function* () {
         const session = new BrowserSession();
@@ -56025,7 +55814,6 @@ function run() {
             const id = coreExports.getInput('dhlottery-id', { required: true });
             const pwd = coreExports.getInput('dhlottery-password', { required: true });
             const amount = parseInt(coreExports.getInput('game-count') || '5');
-            const workflowFile = coreExports.getInput('workflow-file');
             console.log('[Main] Starting lotto purchase action');
             // Initialize browser and login
             console.log('[Main] Initializing browser session');
@@ -56040,52 +55828,15 @@ function run() {
             yield initLabels();
             // Check previous purchases for winning
             console.log('[Main] Checking winning for previous purchases');
-            const winningResults = yield checkWinningIssues();
-            // Send Telegram notifications for winning results
-            for (const result of winningResults) {
-                yield notifyWinning(result.issueNumber, result.round, result.ranks);
-            }
-            // Create API with session bound to functions (no need to pass session manually)
-            const api = {
-                purchaseAuto: (amt) => __awaiter$3(this, void 0, void 0, function* () {
-                    console.log(`[Main] Executing auto purchase: ${amt} games`);
-                    const result = yield purchaseAuto(session, amt);
-                    purchases.push({
-                        type: 'auto',
-                        numbers: result,
-                        timestamp: new Date().toISOString()
-                    }); // Auto-track successful purchase
-                    console.log(`[Main] Auto purchase successful: ${result.length} games`);
-                    return result;
-                }),
-                purchaseManual: (numbers) => __awaiter$3(this, void 0, void 0, function* () {
-                    console.log(`[Main] Executing manual purchase: ${numbers.length} games`);
-                    const result = yield purchaseManual(session, numbers);
-                    purchases.push({
-                        type: 'manual',
-                        numbers: result,
-                        timestamp: new Date().toISOString()
-                    }); // Auto-track successful purchase
-                    console.log(`[Main] Manual purchase successful: ${result.length} games`);
-                    return result;
-                }),
-                generateExcluding: (exclude, count) => {
-                    console.log(`[Main] Generating ${count} games excluding ${exclude.length} sets`);
-                    return generateExcluding(exclude, count);
-                }
-            };
-            // Execute user workflow
-            if (workflowFile) {
-                console.log(`[Main] Loading custom workflow from: ${workflowFile}`);
-                const workflow = yield loadWorkflow(workflowFile);
-                yield workflow(api);
-                console.log('[Main] Custom workflow completed');
-            }
-            else {
-                // Default: simple auto purchase
-                console.log(`[Main] Running default auto purchase: ${amount} games`);
-                yield api.purchaseAuto(amount);
-            }
+            yield checkWinningIssues();
+            console.log(`[Main] Running default auto purchase: ${amount} games`);
+            const result = yield purchaseAuto(session, amount);
+            purchases.push({
+                type: 'auto',
+                numbers: result,
+                timestamp: new Date().toISOString()
+            });
+            console.log(`[Main] Auto purchase successful: ${result.length} games`);
             console.log(`[Main] All purchases completed: ${purchases.length} total purchases`);
         }
         catch (error) {
@@ -56106,8 +55857,6 @@ function run() {
                     yield createConsolidatedIssue(purchases);
                     const totalGames = purchases.reduce((sum, p) => sum + p.numbers.length, 0);
                     console.log(`[Main] Created consolidated issue for ${purchases.length} purchases (${totalGames} total games)`);
-                    // Send Telegram notification for purchases
-                    yield notifyPurchase(purchases);
                 }
                 catch (error) {
                     console.error(`[Main] Failed to create consolidated issue:`, error);
