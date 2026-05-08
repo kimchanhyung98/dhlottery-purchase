@@ -55680,18 +55680,26 @@ function rankToLabel(rank) {
     ];
     return (_a = labelMap[rank]) !== null && _a !== void 0 ? _a : LABELS.losing;
 }
-// Helper: Parse issue body — extracts round from heading and numbers from table rows
+// Helper: Parse issue body — extracts round from heading and numbers from table rows.
+// Throws on any unparseable row — partial ranks would close the issue via `every(r => r === 0)` vacuous truth.
 function parseIssueBody(body) {
     const roundMatch = body.match(/##\s*제(\d+)회/);
     const round = (roundMatch === null || roundMatch === void 0 ? void 0 : roundMatch[1]) ? Number(roundMatch[1]) : 0;
-    const numbers = [];
-    const rowRe = /^\|\s*\d+\s*\|\s*([\d,\s]+?)\s*\|\s*$/gm;
-    let match;
-    while ((match = rowRe.exec(body)) !== null) {
-        const nums = match[1].split(',').map(s => Number(s.trim()));
-        if (nums.length === 6 && nums.every(n => Number.isInteger(n) && n >= 1 && n <= 45)) {
-            numbers.push(nums);
+    const candidateRows = body.split('\n').filter(line => /^\|\s*\d+\s*\|/.test(line));
+    const validRowRe = /^\|\s*\d+\s*\|\s*([\d,\s]+?)\s*\|\s*$/;
+    const numbers = candidateRows.map(row => {
+        const match = row.match(validRowRe);
+        if (!match) {
+            throw new Error(`Malformed purchase row: "${row}"`);
         }
+        const nums = match[1].split(',').map(s => Number(s.trim()));
+        if (nums.length !== 6 || !nums.every(n => Number.isInteger(n) && n >= 1 && n <= 45)) {
+            throw new Error(`Invalid lotto numbers in row: "${row}"`);
+        }
+        return nums;
+    });
+    if (round === 0 || numbers.length === 0) {
+        throw new Error(`Unparseable issue body (round=${round}, rows=${numbers.length})`);
     }
     return { round, numbers };
 }
