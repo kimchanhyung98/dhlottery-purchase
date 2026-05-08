@@ -74,7 +74,7 @@ async function openPurchasePage(session: BrowserSession): Promise<Page> {
     }
 
     if (attempt < 2) {
-      console.warn(`[Purchase] Purchase page not ready for ${mode} mode, retrying once`);
+      console.warn('[Purchase] Purchase page not ready for auto mode, retrying once');
       await page.reload({ waitUntil: 'load', timeout: GOTO_TIMEOUT });
     }
   }
