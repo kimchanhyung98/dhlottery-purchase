@@ -31,12 +31,6 @@ body:
       placeholder: .github/workflows/lotto-purchase.yml
     validations:
       required: true
-  - type: input
-    id: custom_workflow
-    attributes:
-      label: 사용한 custom workflow 파일 (선택)
-      description: workflow-file 값을 바꿨다면 적어 주세요.
-      placeholder: custom-workflows/01-auto-basic.js
   - type: textarea
     id: expected
     attributes:

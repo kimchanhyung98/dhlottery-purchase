@@ -1,5 +1,5 @@
 name: 'lotto-purchase-action'
-description: '동행복권 로또 6/45 자동 구매를 위한 GitHub Action. 자동/수동 구매 및 커스텀 워크플로우를 지원합니다.'
+description: '동행복권 로또 6/45 자동 구매를 위한 GitHub Action입니다.'
 branding:
   icon: 'award'
   color: 'green'
@@ -21,18 +21,6 @@ inputs:
     required: false
     description: '자동 구매 게임 수 (1-5, 기본값: 5)'
     default: '5'
-  workflow-file:
-    required: false
-    description: '커스텀 워크플로우 스크립트 경로 (예: ".github/workflows/lotto-workflow.js")'
-    default: ''
-  telegram-bot-token:
-    required: false
-    description: '텔레그램 봇 토큰 (optional, 알림용)'
-    default: ''
-  telegram-chat-id:
-    required: false
-    description: '텔레그램 채팅 ID (optional, 알림용)'
-    default: ''
 runs:
   using: 'node24'
   main: 'dist/index.js'
