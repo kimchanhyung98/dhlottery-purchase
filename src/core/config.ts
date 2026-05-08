@@ -29,7 +29,6 @@ export const SELECTORS = {
 export const BROWSER_LOGIN_WAIT = 5000;
 export const BROWSER_LOGIN_TIMEOUT = 20000;
 export const BROWSER_PAGE_POPUP_WAIT = 1500;
-export const BROWSER_PAGE_DIALOG_WAIT = 10000;
 export const WEEK_TO_MILLISECOND = 604800000;
 export const THOUSAND_ROUND_DATE = '2022-01-29T11:50:00Z';
 export const LOGIN_ERROR_MESSAGE = '아이디 또는 비밀번호가 일치하지 않습니다';

@@ -55536,30 +55536,22 @@ function fetchWinningNumbers(round) {
         }
     });
 }
-// Check if a set of numbers wins
+// Check the winning rank of a set of numbers (0 = no prize)
 function checkWinning(myNumbers, winningNumbers) {
     const mainWinningNumbers = winningNumbers.slice(0, 6);
     const bonusNumber = winningNumbers[6];
-    const matchedNumbers = myNumbers.filter(n => mainWinningNumbers.includes(n));
-    const matchingCount = matchedNumbers.length;
-    let rank = 0;
-    if (matchingCount === 6) {
-        rank = 1; // 1st prize
-    }
-    else if (matchingCount === 5 && myNumbers.includes(bonusNumber)) {
-        matchedNumbers.push(bonusNumber);
-        rank = 2; // 2nd prize
-    }
-    else if (matchingCount === 5) {
-        rank = 3; // 3rd prize
-    }
-    else if (matchingCount === 4) {
-        rank = 4; // 4th prize
-    }
-    else if (matchingCount === 3) {
-        rank = 5; // 5th prize
-    }
-    return { rank, matchedNumbers };
+    const matchingCount = myNumbers.filter(n => mainWinningNumbers.includes(n)).length;
+    if (matchingCount === 6)
+        return 1;
+    if (matchingCount === 5 && bonusNumber !== undefined && myNumbers.includes(bonusNumber))
+        return 2;
+    if (matchingCount === 5)
+        return 3;
+    if (matchingCount === 4)
+        return 4;
+    if (matchingCount === 3)
+        return 5;
+    return 0;
 }
 // Generate QR check winning link
 function getCheckWinningLink(numbers, round) {
@@ -55606,21 +55598,18 @@ function initLabels() {
             .map(([description, name]) => octokit.rest.issues.createLabel(Object.assign({ name, description }, repo))));
     });
 }
-// Create a consolidated GitHub Issue for multiple purchases
-function createConsolidatedIssue(purchases) {
+// Create a GitHub Issue for an auto-purchased round
+function createPurchaseIssue(numbers) {
     return __awaiter$3(this, void 0, void 0, function* () {
         const octokit = getOctokit();
         const repo = getRepo();
-        const workflowRun = new Date().toISOString();
         const round = getNextLottoRound();
-        // Calculate total games
-        const totalGames = purchases.reduce((sum, p) => sum + p.numbers.length, 0);
-        const body = buildConsolidatedIssueBody(purchases, round, workflowRun);
-        yield octokit.rest.issues.create(Object.assign(Object.assign({}, repo), { title: `제${round}회 ${totalGames}게임`, body, labels: [LABELS.waiting] }));
-        console.log(`Created consolidated issue for ${purchases.length} purchases (${totalGames} total games) for round ${round}`);
+        const body = buildIssueBody(numbers, round);
+        yield octokit.rest.issues.create(Object.assign(Object.assign({}, repo), { title: `제${round}회 ${numbers.length}게임`, body, labels: [LABELS.waiting] }));
+        console.log(`Created issue for ${numbers.length} games in round ${round}`);
     });
 }
-// Get all waiting issues (bug fix: get ALL open issues with waiting label)
+// Get all waiting issues (open issues with the waiting label)
 function getWaitingIssues() {
     return __awaiter$3(this, void 0, void 0, function* () {
         const octokit = getOctokit();
@@ -55633,55 +55622,24 @@ function getWaitingIssues() {
 function checkWinningIssues() {
     return __awaiter$3(this, void 0, void 0, function* () {
         console.log('[Issues] Checking winning for waiting issues');
-        const winningResults = [];
         const issues = yield getWaitingIssues();
         console.log(`[Issues] Found ${issues.length} waiting issues`);
         if (issues.length === 0) {
             console.log('[Issues] No waiting issues to check');
-            return winningResults;
+            return;
         }
         const currentRound = getLastLottoRound();
         for (const issue of issues) {
             try {
-                const body = issue.body || '';
-                let round;
-                let allNumbers;
-                // Detect format and parse accordingly
-                if (isConsolidatedFormat(body)) {
-                    // New consolidated format
-                    const parsed = parseConsolidatedIssueBody(body);
-                    round = parsed.round;
-                    // Flatten all numbers from all purchases
-                    allNumbers = parsed.purchases.flatMap(p => p.numbers);
-                    console.log(`[Issues] Checking consolidated issue #${issue.number} with ${parsed.purchases.length} purchases (${allNumbers.length} games)`);
-                }
-                else {
-                    // Legacy format
-                    const parsed = parseIssueBody(body);
-                    round = parsed.round;
-                    allNumbers = parsed.numbers;
-                    console.log(`[Issues] Checking legacy issue #${issue.number} with ${allNumbers.length} games`);
-                }
-                // Skip if winning numbers not available yet
+                const { round, numbers } = parseIssueBody(issue.body || '');
+                console.log(`[Issues] Checking issue #${issue.number} with ${numbers.length} games`);
                 if (round > currentRound) {
                     console.log(`[Issues] Issue #${issue.number}: Round ${round} not drawn yet (current: ${currentRound})`);
                     continue;
                 }
-                console.log(`[Issues] Checking issue #${issue.number} for round ${round}`);
-                // Fetch winning numbers
                 const winningNumbers = yield fetchWinningNumbers(round);
-                // Check each game
-                const ranks = allNumbers.map(nums => {
-                    const result = checkWinning(nums, winningNumbers);
-                    return result.rank;
-                });
-                // Update issue with results
+                const ranks = numbers.map(nums => checkWinning(nums, winningNumbers));
                 yield updateIssueWithResults(issue.number, ranks);
-                // Track winning results for notifications
-                const hasWinning = ranks.some(r => r > 0);
-                if (hasWinning) {
-                    winningResults.push({ issueNumber: issue.number, round, ranks });
-                }
                 console.log(`[Issues] Issue #${issue.number} updated with ranks:`, ranks);
             }
             catch (error) {
@@ -55689,7 +55647,6 @@ function checkWinningIssues() {
             }
         }
         console.log('[Issues] Finished checking all waiting issues');
-        return winningResults;
     });
 }
 // Update issue with winning results
@@ -55698,22 +55655,16 @@ function updateIssueWithResults(issueNumber, ranks) {
         const octokit = getOctokit();
         const repo = getRepo();
         const context = getContext();
-        // Convert ranks to labels
         const labels = ranks.map(rankToLabel);
-        // Check if all games lost
         const allLost = ranks.every(r => r === 0);
         if (allLost) {
-            // Close issue if all games lost
             yield octokit.rest.issues.update(Object.assign(Object.assign({}, repo), { issue_number: issueNumber, state: 'closed', labels }));
+            return;
         }
-        else {
-            // Add comment and update labels if won
-            const winningGames = ranks.filter(r => r > 0).length;
-            yield octokit.rest.issues.createComment(Object.assign(Object.assign({}, repo), { issue_number: issueNumber, body: `@${context.repo.owner} ${winningGames}게임에 당첨됐습니다!` }));
-            // Remove losing labels and keep only winning ones
-            const winningLabels = labels.filter(l => l !== LABELS.losing);
-            yield octokit.rest.issues.update(Object.assign(Object.assign({}, repo), { issue_number: issueNumber, labels: winningLabels }));
-        }
+        const winningGames = ranks.filter(r => r > 0).length;
+        yield octokit.rest.issues.createComment(Object.assign(Object.assign({}, repo), { issue_number: issueNumber, body: `@${context.repo.owner} ${winningGames}게임에 당첨됐습니다!` }));
+        const winningLabels = labels.filter(l => l !== LABELS.losing);
+        yield octokit.rest.issues.update(Object.assign(Object.assign({}, repo), { issue_number: issueNumber, labels: winningLabels }));
     });
 }
 // Helper: Convert rank to label
@@ -55729,93 +55680,46 @@ function rankToLabel(rank) {
     ];
     return (_a = labelMap[rank]) !== null && _a !== void 0 ? _a : LABELS.losing;
 }
-// Helper: Check if issue body uses consolidated format
-function isConsolidatedFormat(body) {
-    return body.includes('## Purchase');
-}
-// Helper: Parse consolidated issue body (new format)
-function parseConsolidatedIssueBody(body) {
-    var _a;
-    const lines = body.split('\n');
-    const getValue = (line) => line.split(':').slice(1).join(':').trim();
-    // Parse header
-    const workflowRun = getValue(lines[0] || '');
-    const round = Number(getValue(lines[1] || ''));
-    // Parse purchases
-    const purchases = [];
-    let currentPurchase = null;
-    for (let i = 2; i < lines.length; i++) {
-        const line = lines[i];
-        if (!line)
-            continue;
-        if (line.startsWith('## Purchase')) {
-            // Save previous purchase if exists
-            if (currentPurchase) {
-                purchases.push(currentPurchase);
-            }
-            // Start new purchase
-            currentPurchase = {};
-        }
-        else if (currentPurchase && line.includes(':')) {
-            const key = (_a = line.split(':')[0]) === null || _a === void 0 ? void 0 : _a.trim();
-            const value = getValue(line);
-            if (key === 'timestamp') {
-                currentPurchase.timestamp = value;
-            }
-            else if (key === 'type') {
-                currentPurchase.type = value;
-            }
-            else if (key === 'numbers') {
-                currentPurchase.numbers = JSON.parse(value || '[]');
-            }
-            else if (key === 'link') {
-                currentPurchase.link = value;
-            }
-        }
-    }
-    // Save last purchase
-    if (currentPurchase) {
-        purchases.push(currentPurchase);
-    }
-    return { workflowRun, round, purchases };
-}
-// Helper: Parse issue body (legacy format)
+// Helper: Parse issue body — extracts round from heading and numbers from table rows.
+// Throws on any unparseable row — partial ranks would close the issue via `every(r => r === 0)` vacuous truth.
 function parseIssueBody(body) {
-    const lines = body.split('\n');
-    const getValue = (line) => { var _a, _b; return (_b = (_a = line.split(':')[1]) === null || _a === void 0 ? void 0 : _a.trim()) !== null && _b !== void 0 ? _b : ''; };
-    return {
-        date: getValue(lines[0] || ''),
-        round: Number(getValue(lines[1] || '')),
-        numbers: JSON.parse(getValue(lines[2] || '[]')),
-        link: getValue(lines[3] || '')
-    };
-}
-// Helper: Build consolidated issue body with multiple purchases
-function buildConsolidatedIssueBody(purchases, round, workflowRun) {
-    const header = `workflow_run: ${workflowRun}\nround: ${round}\n`;
-    const sections = purchases.map((purchase, index) => {
-        const link = getCheckWinningLink(purchase.numbers, round);
-        const typeLabel = purchase.type === 'auto' ? 'Auto' : 'Manual';
-        return (`\n## Purchase #${index + 1} (${typeLabel})\n` +
-            `timestamp: ${purchase.timestamp}\n` +
-            `type: ${purchase.type}\n` +
-            `numbers: ${JSON.stringify(purchase.numbers)}\n` +
-            `link: ${link}`);
+    const roundMatch = body.match(/##\s*제(\d+)회/);
+    const round = (roundMatch === null || roundMatch === void 0 ? void 0 : roundMatch[1]) ? Number(roundMatch[1]) : 0;
+    const candidateRows = body.split('\n').filter(line => /^\|\s*\d+\s*\|/.test(line));
+    const validRowRe = /^\|\s*\d+\s*\|\s*([\d,\s]+?)\s*\|\s*$/;
+    const numbers = candidateRows.map(row => {
+        const match = row.match(validRowRe);
+        if (!match) {
+            throw new Error(`Malformed purchase row: "${row}"`);
+        }
+        const nums = match[1].split(',').map(s => Number(s.trim()));
+        if (nums.length !== 6 || !nums.every(n => Number.isInteger(n) && n >= 1 && n <= 45)) {
+            throw new Error(`Invalid lotto numbers in row: "${row}"`);
+        }
+        return nums;
     });
-    return header + sections.join('\n');
+    if (round === 0 || numbers.length === 0) {
+        throw new Error(`Unparseable issue body (round=${round}, rows=${numbers.length})`);
+    }
+    return { round, numbers };
+}
+// Helper: Build issue body — "## 제{round}회 구매 내역" + table + winning link
+function buildIssueBody(numbers, round) {
+    const link = getCheckWinningLink(numbers, round);
+    const rows = numbers
+        .map((nums, idx) => `| ${idx + 1} | ${nums.map(n => String(n).padStart(2, '0')).join(', ')} |`)
+        .join('\n');
+    return `## 제${round}회 구매 내역\n\n| # | 번호 |\n| --- | --- |\n${rows}\n\n[당첨 확인하기](${link})`;
 }
 
 function run() {
     return __awaiter$3(this, void 0, void 0, function* () {
         const session = new BrowserSession();
-        const purchases = []; // Track all successful purchases
         try {
-            // Get inputs
             const id = coreExports.getInput('dhlottery-id', { required: true });
             const pwd = coreExports.getInput('dhlottery-password', { required: true });
             const amount = parseInt(coreExports.getInput('game-count') || '5');
             console.log('[Main] Starting lotto purchase action');
-            // Initialize browser and login
             console.log('[Main] Initializing browser session');
             yield session.init({
                 headless: true,
@@ -55823,21 +55727,14 @@ function run() {
             });
             console.log('[Main] Logging in');
             yield session.login(id, pwd);
-            // Initialize GitHub labels
             console.log('[Main] Initializing GitHub labels');
             yield initLabels();
-            // Check previous purchases for winning
             console.log('[Main] Checking winning for previous purchases');
             yield checkWinningIssues();
-            console.log(`[Main] Running default auto purchase: ${amount} games`);
-            const result = yield purchaseAuto(session, amount);
-            purchases.push({
-                type: 'auto',
-                numbers: result,
-                timestamp: new Date().toISOString()
-            });
-            console.log(`[Main] Auto purchase successful: ${result.length} games`);
-            console.log(`[Main] All purchases completed: ${purchases.length} total purchases`);
+            console.log(`[Main] Running auto purchase: ${amount} games`);
+            const numbers = yield purchaseAuto(session, amount);
+            console.log(`[Main] Auto purchase successful: ${numbers.length} games`);
+            yield createPurchaseIssue(numbers);
         }
         catch (error) {
             if (error instanceof Error) {
@@ -55848,24 +55745,8 @@ function run() {
                 console.error('[Main] Workflow error:', error);
                 coreExports.setFailed(String(error));
             }
-            // Continue to create issues for successful purchases
         }
         finally {
-            // Create one consolidated issue for all successful purchases
-            if (purchases.length > 0) {
-                try {
-                    yield createConsolidatedIssue(purchases);
-                    const totalGames = purchases.reduce((sum, p) => sum + p.numbers.length, 0);
-                    console.log(`[Main] Created consolidated issue for ${purchases.length} purchases (${totalGames} total games)`);
-                }
-                catch (error) {
-                    console.error(`[Main] Failed to create consolidated issue:`, error);
-                }
-            }
-            else {
-                console.log(`[Main] No successful purchases to create issue`);
-            }
-            // Close browser session
             console.log('[Main] Closing browser session');
             yield session.close();
             console.log('[Main] Action completed');

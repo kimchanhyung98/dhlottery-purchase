@@ -30,40 +30,26 @@ export async function initLabels(): Promise<void> {
   );
 }
 
-// Purchase metadata interface
-export interface PurchaseMetadata {
-  type: 'auto' | 'manual';
-  numbers: number[][];
-  timestamp: string;
-}
-
-// Create a consolidated GitHub Issue for multiple purchases
-export async function createConsolidatedIssue(purchases: PurchaseMetadata[]): Promise<void> {
+// Create a GitHub Issue for an auto-purchased round
+export async function createPurchaseIssue(numbers: number[][]): Promise<void> {
   const octokit = getOctokit();
   const repo = getRepo();
 
-  const workflowRun = new Date().toISOString();
   const round = getNextLottoRound();
-
-  // Calculate total games
-  const totalGames = purchases.reduce((sum, p) => sum + p.numbers.length, 0);
-
-  const body = buildConsolidatedIssueBody(purchases, round, workflowRun);
+  const body = buildIssueBody(numbers, round);
 
   await octokit.rest.issues.create({
     ...repo,
-    title: `제${round}회 ${totalGames}게임`,
+    title: `제${round}회 ${numbers.length}게임`,
     body,
     labels: [LABELS.waiting]
   });
 
-  console.log(
-    `Created consolidated issue for ${purchases.length} purchases (${totalGames} total games) for round ${round}`
-  );
+  console.log(`Created issue for ${numbers.length} games in round ${round}`);
 }
 
-// Get all waiting issues (bug fix: get ALL open issues with waiting label)
-export async function getWaitingIssues() {
+// Get all waiting issues (open issues with the waiting label)
+async function getWaitingIssues() {
   const octokit = getOctokit();
   const repo = getRepo();
 
@@ -77,77 +63,34 @@ export async function getWaitingIssues() {
   return issues.data;
 }
 
-// Winning result for an issue
-export interface WinningResult {
-  issueNumber: number;
-  round: number;
-  ranks: number[];
-}
-
 // Check winning for all waiting issues
-export async function checkWinningIssues(): Promise<WinningResult[]> {
+export async function checkWinningIssues(): Promise<void> {
   console.log('[Issues] Checking winning for waiting issues');
-  const winningResults: WinningResult[] = [];
 
   const issues = await getWaitingIssues();
   console.log(`[Issues] Found ${issues.length} waiting issues`);
 
   if (issues.length === 0) {
     console.log('[Issues] No waiting issues to check');
-    return winningResults;
+    return;
   }
 
   const currentRound = getLastLottoRound();
 
   for (const issue of issues) {
     try {
-      const body = issue.body || '';
-      let round: number;
-      let allNumbers: number[][];
+      const { round, numbers } = parseIssueBody(issue.body || '');
+      console.log(`[Issues] Checking issue #${issue.number} with ${numbers.length} games`);
 
-      // Detect format and parse accordingly
-      if (isConsolidatedFormat(body)) {
-        // New consolidated format
-        const parsed = parseConsolidatedIssueBody(body);
-        round = parsed.round;
-        // Flatten all numbers from all purchases
-        allNumbers = parsed.purchases.flatMap(p => p.numbers);
-        console.log(
-          `[Issues] Checking consolidated issue #${issue.number} with ${parsed.purchases.length} purchases (${allNumbers.length} games)`
-        );
-      } else {
-        // Legacy format
-        const parsed = parseIssueBody(body);
-        round = parsed.round;
-        allNumbers = parsed.numbers;
-        console.log(`[Issues] Checking legacy issue #${issue.number} with ${allNumbers.length} games`);
-      }
-
-      // Skip if winning numbers not available yet
       if (round > currentRound) {
         console.log(`[Issues] Issue #${issue.number}: Round ${round} not drawn yet (current: ${currentRound})`);
         continue;
       }
 
-      console.log(`[Issues] Checking issue #${issue.number} for round ${round}`);
-
-      // Fetch winning numbers
       const winningNumbers = await fetchWinningNumbers(round);
+      const ranks = numbers.map(nums => checkWinning(nums, winningNumbers));
 
-      // Check each game
-      const ranks = allNumbers.map(nums => {
-        const result = checkWinning(nums, winningNumbers);
-        return result.rank;
-      });
-
-      // Update issue with results
       await updateIssueWithResults(issue.number, ranks);
-
-      // Track winning results for notifications
-      const hasWinning = ranks.some(r => r > 0);
-      if (hasWinning) {
-        winningResults.push({ issueNumber: issue.number, round, ranks });
-      }
 
       console.log(`[Issues] Issue #${issue.number} updated with ranks:`, ranks);
     } catch (error) {
@@ -156,7 +99,6 @@ export async function checkWinningIssues(): Promise<WinningResult[]> {
   }
 
   console.log('[Issues] Finished checking all waiting issues');
-  return winningResults;
 }
 
 // Update issue with winning results
@@ -165,37 +107,32 @@ async function updateIssueWithResults(issueNumber: number, ranks: number[]): Pro
   const repo = getRepo();
   const context = getContext();
 
-  // Convert ranks to labels
   const labels = ranks.map(rankToLabel);
-
-  // Check if all games lost
   const allLost = ranks.every(r => r === 0);
 
   if (allLost) {
-    // Close issue if all games lost
     await octokit.rest.issues.update({
       ...repo,
       issue_number: issueNumber,
       state: 'closed',
       labels
     });
-  } else {
-    // Add comment and update labels if won
-    const winningGames = ranks.filter(r => r > 0).length;
-    await octokit.rest.issues.createComment({
-      ...repo,
-      issue_number: issueNumber,
-      body: `@${context.repo.owner} ${winningGames}게임에 당첨됐습니다!`
-    });
-
-    // Remove losing labels and keep only winning ones
-    const winningLabels = labels.filter(l => l !== LABELS.losing);
-    await octokit.rest.issues.update({
-      ...repo,
-      issue_number: issueNumber,
-      labels: winningLabels
-    });
+    return;
   }
+
+  const winningGames = ranks.filter(r => r > 0).length;
+  await octokit.rest.issues.createComment({
+    ...repo,
+    issue_number: issueNumber,
+    body: `@${context.repo.owner} ${winningGames}게임에 당첨됐습니다!`
+  });
+
+  const winningLabels = labels.filter(l => l !== LABELS.losing);
+  await octokit.rest.issues.update({
+    ...repo,
+    issue_number: issueNumber,
+    labels: winningLabels
+  });
 }
 
 // Helper: Convert rank to label
@@ -212,103 +149,41 @@ function rankToLabel(rank: number): string {
   return labelMap[rank] ?? LABELS.losing;
 }
 
-// Helper: Check if issue body uses consolidated format
-function isConsolidatedFormat(body: string): boolean {
-  return body.includes('## Purchase');
-}
+// Helper: Parse issue body — extracts round from heading and numbers from table rows.
+// Throws on any unparseable row or body; callers handle the error and skip updating/closing the issue.
+function parseIssueBody(body: string): { round: number; numbers: number[][] } {
+  const roundMatch = body.match(/##\s*제(\d+)회/);
+  const round = roundMatch?.[1] ? Number(roundMatch[1]) : 0;
 
-// Helper: Parse consolidated issue body (new format)
-function parseConsolidatedIssueBody(body: string): {
-  workflowRun: string;
-  round: number;
-  purchases: Array<{
-    type: 'auto' | 'manual';
-    timestamp: string;
-    numbers: number[][];
-    link: string;
-  }>;
-} {
-  const lines = body.split('\n');
-  const getValue = (line: string) => line.split(':').slice(1).join(':').trim();
+  const candidateRows = body.split('\n').filter(line => /^\|\s*\d+\s*\|/.test(line));
+  const validRowRe = /^\|\s*\d+\s*\|\s*([\d,\s]+?)\s*\|\s*$/;
 
-  // Parse header
-  const workflowRun = getValue(lines[0] || '');
-  const round = Number(getValue(lines[1] || ''));
-
-  // Parse purchases
-  const purchases: Array<{
-    type: 'auto' | 'manual';
-    timestamp: string;
-    numbers: number[][];
-    link: string;
-  }> = [];
-
-  let currentPurchase: any = null;
-
-  for (let i = 2; i < lines.length; i++) {
-    const line = lines[i];
-    if (!line) continue;
-
-    if (line.startsWith('## Purchase')) {
-      // Save previous purchase if exists
-      if (currentPurchase) {
-        purchases.push(currentPurchase);
-      }
-      // Start new purchase
-      currentPurchase = {};
-    } else if (currentPurchase && line.includes(':')) {
-      const key = line.split(':')[0]?.trim();
-      const value = getValue(line);
-
-      if (key === 'timestamp') {
-        currentPurchase.timestamp = value;
-      } else if (key === 'type') {
-        currentPurchase.type = value as 'auto' | 'manual';
-      } else if (key === 'numbers') {
-        currentPurchase.numbers = JSON.parse(value || '[]');
-      } else if (key === 'link') {
-        currentPurchase.link = value;
-      }
+  const numbers: number[][] = candidateRows.map(row => {
+    const match = row.match(validRowRe);
+    if (!match) {
+      throw new Error(`Malformed purchase row: "${row}"`);
     }
-  }
-
-  // Save last purchase
-  if (currentPurchase) {
-    purchases.push(currentPurchase);
-  }
-
-  return { workflowRun, round, purchases };
-}
-
-// Helper: Parse issue body (legacy format)
-function parseIssueBody(body: string): { date: string; round: number; numbers: number[][]; link: string } {
-  const lines = body.split('\n');
-  const getValue = (line: string) => line.split(':')[1]?.trim() ?? '';
-
-  return {
-    date: getValue(lines[0] || ''),
-    round: Number(getValue(lines[1] || '')),
-    numbers: JSON.parse(getValue(lines[2] || '[]')),
-    link: getValue(lines[3] || '')
-  };
-}
-
-// Helper: Build consolidated issue body with multiple purchases
-function buildConsolidatedIssueBody(purchases: PurchaseMetadata[], round: number, workflowRun: string): string {
-  const header = `workflow_run: ${workflowRun}\nround: ${round}\n`;
-
-  const sections = purchases.map((purchase, index) => {
-    const link = getCheckWinningLink(purchase.numbers, round);
-    const typeLabel = purchase.type === 'auto' ? 'Auto' : 'Manual';
-
-    return (
-      `\n## Purchase #${index + 1} (${typeLabel})\n` +
-      `timestamp: ${purchase.timestamp}\n` +
-      `type: ${purchase.type}\n` +
-      `numbers: ${JSON.stringify(purchase.numbers)}\n` +
-      `link: ${link}`
-    );
+    const nums = match[1]!.split(',').map(s => Number(s.trim()));
+    if (nums.length !== 6 || !nums.every(n => Number.isInteger(n) && n >= 1 && n <= 45)) {
+      throw new Error(`Invalid lotto numbers in row: "${row}"`);
+    }
+    return nums;
   });
 
-  return header + sections.join('\n');
+  if (round === 0 || numbers.length === 0) {
+    throw new Error(`Unparseable issue body (round=${round}, rows=${numbers.length})`);
+  }
+
+  return { round, numbers };
+}
+
+// Helper: Build issue body — "## 제{round}회 구매 내역" + table + winning link
+function buildIssueBody(numbers: number[][], round: number): string {
+  const link = getCheckWinningLink(numbers, round);
+
+  const rows = numbers
+    .map((nums, idx) => `| ${idx + 1} | ${nums.map(n => String(n).padStart(2, '0')).join(', ')} |`)
+    .join('\n');
+
+  return `## 제${round}회 구매 내역\n\n| # | 번호 |\n| --- | --- |\n${rows}\n\n[당첨 확인하기](${link})`;
 }
