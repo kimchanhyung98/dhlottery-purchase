@@ -55641,28 +55641,8 @@ function checkWinningIssues() {
         const currentRound = getLastLottoRound();
         for (const issue of issues) {
             try {
-                const body = issue.body || '';
-                let round;
-                let allNumbers;
-                // Detect format and parse accordingly
-                if (isNewFormat(body)) {
-                    const parsed = parseNewIssueBody(body);
-                    round = parsed.round;
-                    allNumbers = parsed.numbers;
-                    console.log(`[Issues] Checking issue #${issue.number} with ${allNumbers.length} games`);
-                }
-                else if (isConsolidatedFormat(body)) {
-                    const parsed = parseConsolidatedIssueBody(body);
-                    round = parsed.round;
-                    allNumbers = parsed.purchases.flatMap(p => p.numbers);
-                    console.log(`[Issues] Checking consolidated issue #${issue.number} with ${parsed.purchases.length} purchases (${allNumbers.length} games)`);
-                }
-                else {
-                    const parsed = parseIssueBody(body);
-                    round = parsed.round;
-                    allNumbers = parsed.numbers;
-                    console.log(`[Issues] Checking legacy issue #${issue.number} with ${allNumbers.length} games`);
-                }
+                const { round, numbers: allNumbers } = parseIssueBody(issue.body || '');
+                console.log(`[Issues] Checking issue #${issue.number} with ${allNumbers.length} games`);
                 // Skip if winning numbers not available yet
                 if (round > currentRound) {
                     console.log(`[Issues] Issue #${issue.number}: Round ${round} not drawn yet (current: ${currentRound})`);
@@ -55730,12 +55710,8 @@ function rankToLabel(rank) {
     ];
     return (_a = labelMap[rank]) !== null && _a !== void 0 ? _a : LABELS.losing;
 }
-// Helper: Detect current "## 제{round}회 구매 내역" format
-function isNewFormat(body) {
-    return /^##\s*제\d+회\s*구매 내역/m.test(body);
-}
-// Helper: Parse current format — extracts round from heading and numbers from table rows
-function parseNewIssueBody(body) {
+// Helper: Parse issue body — extracts round from heading and numbers from table rows
+function parseIssueBody(body) {
     const roundMatch = body.match(/##\s*제(\d+)회/);
     const round = (roundMatch === null || roundMatch === void 0 ? void 0 : roundMatch[1]) ? Number(roundMatch[1]) : 0;
     const numbers = [];
@@ -55748,69 +55724,6 @@ function parseNewIssueBody(body) {
         }
     }
     return { round, numbers };
-}
-// Helper: Detect legacy "## Purchase #N" consolidated format
-function isConsolidatedFormat(body) {
-    return body.includes('## Purchase');
-}
-// Helper: Extract value after the first ":" — preserves colons inside the value (e.g. URLs)
-function getFieldValue(line) {
-    return line.split(':').slice(1).join(':').trim();
-}
-// Helper: Parse consolidated issue body (new format)
-function parseConsolidatedIssueBody(body) {
-    var _a;
-    const lines = body.split('\n');
-    // Parse header
-    const workflowRun = getFieldValue(lines[0] || '');
-    const round = Number(getFieldValue(lines[1] || ''));
-    // Parse purchases
-    const purchases = [];
-    let currentPurchase = null;
-    for (let i = 2; i < lines.length; i++) {
-        const line = lines[i];
-        if (!line)
-            continue;
-        if (line.startsWith('## Purchase')) {
-            // Save previous purchase if exists
-            if (currentPurchase) {
-                purchases.push(currentPurchase);
-            }
-            // Start new purchase
-            currentPurchase = {};
-        }
-        else if (currentPurchase && line.includes(':')) {
-            const key = (_a = line.split(':')[0]) === null || _a === void 0 ? void 0 : _a.trim();
-            const value = getFieldValue(line);
-            if (key === 'timestamp') {
-                currentPurchase.timestamp = value;
-            }
-            else if (key === 'type') {
-                currentPurchase.type = value;
-            }
-            else if (key === 'numbers') {
-                currentPurchase.numbers = JSON.parse(value || '[]');
-            }
-            else if (key === 'link') {
-                currentPurchase.link = value;
-            }
-        }
-    }
-    // Save last purchase
-    if (currentPurchase) {
-        purchases.push(currentPurchase);
-    }
-    return { workflowRun, round, purchases };
-}
-// Helper: Parse issue body (legacy format — kept only to read pre-existing issues)
-function parseIssueBody(body) {
-    const lines = body.split('\n');
-    return {
-        date: getFieldValue(lines[0] || ''),
-        round: Number(getFieldValue(lines[1] || '')),
-        numbers: JSON.parse(getFieldValue(lines[2] || '') || '[]'),
-        link: getFieldValue(lines[3] || '')
-    };
 }
 // Helper: Build issue body — "## 제{round}회 구매 내역" + table + winning link
 function buildIssueBody(purchases, round) {
