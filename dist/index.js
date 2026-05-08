@@ -55606,18 +55606,16 @@ function initLabels() {
             .map(([description, name]) => octokit.rest.issues.createLabel(Object.assign({ name, description }, repo))));
     });
 }
-// Create a consolidated GitHub Issue for multiple purchases
+// Create a GitHub Issue for purchases of the upcoming round
 function createConsolidatedIssue(purchases) {
     return __awaiter$3(this, void 0, void 0, function* () {
         const octokit = getOctokit();
         const repo = getRepo();
-        const workflowRun = new Date().toISOString();
         const round = getNextLottoRound();
-        // Calculate total games
         const totalGames = purchases.reduce((sum, p) => sum + p.numbers.length, 0);
-        const body = buildConsolidatedIssueBody(purchases, round, workflowRun);
+        const body = buildIssueBody(purchases, round);
         yield octokit.rest.issues.create(Object.assign(Object.assign({}, repo), { title: `제${round}회 ${totalGames}게임`, body, labels: [LABELS.waiting] }));
-        console.log(`Created consolidated issue for ${purchases.length} purchases (${totalGames} total games) for round ${round}`);
+        console.log(`Created issue for ${purchases.length} purchases (${totalGames} total games) for round ${round}`);
     });
 }
 // Get all waiting issues (bug fix: get ALL open issues with waiting label)
@@ -55647,16 +55645,19 @@ function checkWinningIssues() {
                 let round;
                 let allNumbers;
                 // Detect format and parse accordingly
-                if (isConsolidatedFormat(body)) {
-                    // New consolidated format
+                if (isNewFormat(body)) {
+                    const parsed = parseNewIssueBody(body);
+                    round = parsed.round;
+                    allNumbers = parsed.numbers;
+                    console.log(`[Issues] Checking issue #${issue.number} with ${allNumbers.length} games`);
+                }
+                else if (isConsolidatedFormat(body)) {
                     const parsed = parseConsolidatedIssueBody(body);
                     round = parsed.round;
-                    // Flatten all numbers from all purchases
                     allNumbers = parsed.purchases.flatMap(p => p.numbers);
                     console.log(`[Issues] Checking consolidated issue #${issue.number} with ${parsed.purchases.length} purchases (${allNumbers.length} games)`);
                 }
                 else {
-                    // Legacy format
                     const parsed = parseIssueBody(body);
                     round = parsed.round;
                     allNumbers = parsed.numbers;
@@ -55729,7 +55730,26 @@ function rankToLabel(rank) {
     ];
     return (_a = labelMap[rank]) !== null && _a !== void 0 ? _a : LABELS.losing;
 }
-// Helper: Check if issue body uses consolidated format
+// Helper: Detect current "## 제{round}회 구매 내역" format
+function isNewFormat(body) {
+    return /^##\s*제\d+회\s*구매 내역/m.test(body);
+}
+// Helper: Parse current format — extracts round from heading and numbers from table rows
+function parseNewIssueBody(body) {
+    const roundMatch = body.match(/##\s*제(\d+)회/);
+    const round = (roundMatch === null || roundMatch === void 0 ? void 0 : roundMatch[1]) ? Number(roundMatch[1]) : 0;
+    const numbers = [];
+    const rowRe = /^\|\s*\d+\s*\|\s*([\d,\s]+?)\s*\|\s*$/gm;
+    let match;
+    while ((match = rowRe.exec(body)) !== null) {
+        const nums = match[1].split(',').map(s => Number(s.trim()));
+        if (nums.length === 6 && nums.every(n => Number.isInteger(n) && n >= 1 && n <= 45)) {
+            numbers.push(nums);
+        }
+    }
+    return { round, numbers };
+}
+// Helper: Detect legacy "## Purchase #N" consolidated format
 function isConsolidatedFormat(body) {
     return body.includes('## Purchase');
 }
@@ -55792,19 +55812,14 @@ function parseIssueBody(body) {
         link: getFieldValue(lines[3] || '')
     };
 }
-// Helper: Build consolidated issue body with multiple purchases
-function buildConsolidatedIssueBody(purchases, round, workflowRun) {
-    const header = `workflow_run: ${workflowRun}\nround: ${round}\n`;
-    const sections = purchases.map((purchase, index) => {
-        const link = getCheckWinningLink(purchase.numbers, round);
-        const typeLabel = purchase.type === 'auto' ? 'Auto' : 'Manual';
-        return (`\n## Purchase #${index + 1} (${typeLabel})\n` +
-            `timestamp: ${purchase.timestamp}\n` +
-            `type: ${purchase.type}\n` +
-            `numbers: ${JSON.stringify(purchase.numbers)}\n` +
-            `link: ${link}`);
-    });
-    return header + sections.join('\n');
+// Helper: Build issue body — "## 제{round}회 구매 내역" + table + winning link
+function buildIssueBody(purchases, round) {
+    const allNumbers = purchases.flatMap(p => p.numbers);
+    const link = getCheckWinningLink(allNumbers, round);
+    const rows = allNumbers
+        .map((nums, idx) => `| ${idx + 1} | ${nums.map(n => String(n).padStart(2, '0')).join(', ')} |`)
+        .join('\n');
+    return `## 제${round}회 구매 내역\n\n| # | 번호 |\n| --- | --- |\n${rows}\n\n[당첨 확인하기](${link})`;
 }
 
 function run() {
